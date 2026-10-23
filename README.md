@@ -17,6 +17,7 @@ request must leave your computer so that it *lands* exactly where you want.
 ## Contents
 
 - [How it works](#how-it-works)
+- [What makes it different](#what-makes-it-different)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Getting your cookie](#getting-your-cookie)
@@ -62,6 +63,26 @@ Consequences:
 
 That is why all offsets are positive (arrival *after* 00:00) and the default is
 `30,60,100,150,200,300`.
+
+---
+
+## What makes it different
+
+Most quota scripts send the request at a fixed moment ("fire 1400 ms before midnight", "enter a
+delay") and hope it lands in time. Every step between "send" and "arrive" is guessed. This script
+measures or removes each of those steps:
+
+| Problem in typical scripts | What happens | What this script does |
+|---|---|---|
+| **Fixed delay, latency not measured** | The right delay depends on where you live (~15 ms one way from Singapore, ~190 ms from South America), so users try 200, 300, 400 ms… for days | Measures the round trip one minute before and sends each shot at `00:00 − one-way latency + offset`, so the offset is the real **arrival** time |
+| **Connection opened when firing** | The first request must do the TCP + TLS handshake (several round trips, up to ~1 s from far away), so it arrives much later than planned | Opens one connection per shot **in parallel** 60 s before, refreshes them 5 s before, and fires over the already open connections |
+| **Preparation not time-bounded** | If setup is slow or a connection hangs, the shots go out late. (The first run of this very script fired 3.2 s late because six connections were opened one after another) | Setup starts 60 s ahead and runs in parallel; the final refresh has a **hard deadline 0.5 s before the first shot**: a hanging connection is abandoned, the other shots still fire on time, and the affected shot is reported |
+| **NTP time used without compensation** | The NTP answer is already old when it arrives, so the clock is off by half the NTP round trip (often 50–200 ms) | Uses the NTP-computed offset (delay compensated), median of several servers, and **re-syncs 60 s before** the reset |
+| **System clock can jump** | If the OS corrects the clock while waiting, the shot moves with it | Clock anchored to a monotonic counter: immune to system clock changes, without ever modifying the system clock |
+| **OS sleep granularity** | `sleep()` can overshoot by ~15 ms on Windows, and parallel busy-waiting threads delay each other | Coarse sleep, then a yielding spin for the last 50 ms and fine thread switching: measured jitter **0–1 ms** |
+| **Bursts of many requests** | Only the first request is evaluated; if it lands before 00:00 the attempt is wasted and the rest get `6` | A few shots, **all after 00:00**, with the earliest one placed just past the reset |
+| **No feedback** | "Quota reached" says nothing about whether you were early or late | Every "quota" answer is labelled **ARRIVED EARLY** or **after the reset**, so you can tune `--offset` with real data |
+| **Can't test without spending an attempt** | You only find out at midnight | `--check` uses a read-only endpoint and `--rehearsal` runs the whole timing pipeline ~90 s from now without requesting anything |
 
 ---
 
