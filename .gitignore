@@ -1,0 +1,13 @@
+# Your Xiaomi session - NEVER commit it
+cookie.txt
+*.cookie
+cookies*.txt
+
+# Logs from your attempts
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
